@@ -47,4 +47,25 @@ Mở file package.json ta thấy đoạn script như sau:
 -   `start`  - Chạy  [`next start`](https://nextjs.org/docs/api-reference/cli#production)  sẽ khởi chạy production server. Ví dụ `yarn next start`
 -   `lint`  - Chạy  [`next lint`](https://nextjs.org/docs/api-reference/cli#lint)  sẽ thiết lập nextjs được xây dựng trong cấu hình ESLint. Ví dụ `yarn next lint`
 
-Nextjs được xây dựng xung quanh định nghĩa 1 trang (pages). Mỗi page là một React component xuất ra từ file `.js`, `.jsx`, `.ts`, or `.tsx`trong danh mục `pages`
+Nextjs được xây dựng xung quanh định nghĩa 1 trang (pages). Mỗi page là một React component xuất ra từ file `.js`, `.jsx`, `.ts`, or `.tsx`trong thư mục `pages`
+
+Các page được định tuyến dựa trên trên file của chúng. Ví dụ:
+`pages/about.js` được map tới `/about`. Bạn có thể sửa dụng các tham số định tuyến động với tên file.
+Tạo thư mục `pages` trong project.
+Tạo file index.js theo đường dẫn sau `./pages/index.js` và thêm nội dung như sau:
+
+```jsx
+function HomePage() {
+  return <div>Welcome to Next.js!</div>
+}
+
+export default HomePage
+```
+Để khởi chạy ứng dụng gõ `npm run dev` hoặc `yarn dev`. Ứng dụng sẽ được khởi chạy trên đường dẫn: `http://localhost:3000`
+
+## Nextjs hướng tới:
+- Tự động biên dịch và đóng gói (compilation and bundling sử dụng webpack và babel)
+- Làm tươi nhanh react (React Fast Refresh)
+- Sinh tĩnh và render từ server (Static generation and server-side rendering) phần `./pages/`
+- Các file tĩnh trong `./public/` được map tới `/`
+Thêm nữa, bất kì ứng dụng Nextjs nào đều sẵn sàng cho môi trường production, đọc thêm về [Tài liệu production ](https://nextjs.org/docs/deployment).
