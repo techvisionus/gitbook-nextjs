@@ -33,3 +33,137 @@ Quan trọng là Nextjs cho ta được quyền chọn cách render nào mà ta 
 
 Tôi khuyến nghị sử dụng Static Generation hơn là Server-side Rendering vì lý do hiệu năng. Sinh tĩnh (Static generated) một pages có thể được cached bởi CDN mà không cần thêm cấu hình để đẩy hiệu năng lên. Tuy nhiên, trong cài truowgnf hợp Server-side Rendering là lựa chọn duy nhất.
 Bạn cũng có thể sử dụng Client-side Rendering cùng với Static Generation hoặc Server-side Rendering. Điều đó có nghĩa 1 vài thành phần của trang (page) có thể hoàn toàn được render bởi JavaScript phía client. Đọc thêm tại [Data Fetching](https://nextjs.org/docs/basic-features/data-fetching#fetching-data-on-the-client-side) 
+
+## Sinh tĩnh - Static Generation (nên dùng)
+
+Nếu 1 trang sử dụng **Static Generation**, trang HTML được sinh ra trong thời gian build. Có nghĩa là trang HTML được sỉnh ra khi chạy `next build`. Phần HTML này sẽ được tái sử dụng trong mỗi request. Nó có thể được cached bởi CDN.
+Trong Next.js ta có thể sinh tĩnh 1 page khi có hoặc không có data. Hãy xem trong một số trường hợp.
+
+**Static Generation không có data**
+Mặc định, Next.js tiền render trang sử dụng Static Generation không cần data. Ví dụ:
+```jsx
+function About() {
+  return <div>About</div>
+}
+
+export default About
+```
+Lưu ý rằng trang này không cần lấy dữ liệu từ bên ngoài để tiền render (pre-rendered). Trường hợp này, Next.js sinh 1 file HTML mỗi trang trong suốt thời gian build.
+
+**Static Generation với data**
+Vài pages cần lấy dữ liệu từ ngoài vào để tiền render (pre-rendering). Có 2 trường hợp và 1 hoặc cả 2 có thể ứng dụng. Trong mỗi trường hợp, ta có thể sử dụng những hàm mà Next.js cung cấp:
+
+1. Nội dung trang phụ thuộc dữ liệu ngoài: Dùng `getStaticProps`.
+2. Đường dẫn trang phụ thuộc dữ liệu ngoài: Dùng `getStaticPaths` (thường được dùng thêm với `getStaticProps`).
+
+Trường hợp 1: Nội dung trang phụ thuộc dữ liệu ngoài
+
+**Ví dụ:** Trang blog của bạn cần lấy danh sách các bài block từ một CMS (content management system)
+
+```jsx
+// TODO: Need to fetch `posts` (by calling some API endpoint)
+//       before this page can be pre-rendered.
+function Blog({ posts }) {
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li>{post.title}</li>
+      ))}
+    </ul>
+  )
+}
+
+export default Blog
+```
+Để lấy dữ liệu trước khi render, Next.js chấp thuận `export` một hàm `async` gọi là `getStaticProps` từ cùng 1 file. Hàm này được gọi lúc build và để ta lấy dữ liệu về `props` của trang lúc tiền render.
+
+```jsx
+function Blog({ posts }) {
+  // Render posts...
+}
+
+// This function gets called at build time
+export async function getStaticProps() {
+  // Call an external API endpoint to get posts
+  const res = await fetch('https://.../posts')
+  const posts = await res.json()
+
+  // By returning { props: { posts } }, the Blog component
+  // will receive `posts` as a prop at build time
+  return {
+    props: {
+      posts,
+    },
+  }
+}
+
+export default Blog
+```
+Muốn rõ hơn về `getStaticprops` làm việc như nào, ghé  [Data Fetching documentation](https://nextjs.org/docs/basic-features/data-fetching#getstaticprops-static-generation).
+
+**Trường hợp 2: Đường dẫn trang phụ thuộc dữ liệu ngoài**
+
+Next.js cho phép ra tạo trang với đường dẫn động. Ví dụ, ta có thể tạo file với tên `pages/posts/[id].js` để đưa ra bài blog dựa trên `id`. Điều này sẽ cho phép bạn thể hiện bài post với `id: 1` khi truy cập `posts/1`
+
+Học nhiều hơn về đường dẫn động (dynamic routing), ghé [Dynamic Routing documentation](https://nextjs.org/docs/routing/dynamic-routes).
+
+Tuy nhiên `id` mà ta muốn tiền render trong thời gian build phụ thuộc vào dữ liệu ngoài.
+**Ví dụ:** giả sử ta chỉ thêm 1 bài blog (với `id: 1`) tới database. Trong trường hợp này, ta chỉ muốn tiền render `posts/1` lúc build time.
+Sau đó, ta có thể thêm bài post thứ 2 với `id: 2`. Sau đó ta muốn tiền render `posts/2`.
+
+Vậy với đường dẫn trang được tiền pre-rendered phụ thuộc vào dữ liệu ngoài. Để xử lý, Next.js cho phép `export` một hàm `async` gọi là `getSStaticPaths` từ một trang động (`pages/posts/[id].js` trong trường hợp này). Hàm này được gọi trong thời gian build và cho phép ta xasc định đường dẫn nào muốn pre-render.
+
+```jsx
+// This function gets called at build time
+export async function getStaticPaths() {
+  // Call an external API endpoint to get posts
+  const res = await fetch('https://.../posts')
+  const posts = await res.json()
+
+  // Get the paths we want to pre-render based on posts
+  const paths = posts.map((post) => ({
+    params: { id: post.id },
+  }))
+
+  // We'll pre-render only these paths at build time.
+  // { fallback: false } means other routes should 404.
+  return { paths, fallback: false }
+}
+```
+Trong `pages/posts/[id].js`, ta cần export `getStaticProps` vì vậy ta cần lấy dữ liệu về  bài post với `id` và sử dụng nó để pre-render trang:
+
+```jsx
+function Post({ post }) {
+  // Render post...
+}
+
+export async function getStaticPaths() {
+  // ...
+}
+
+// This also gets called at build time
+export async function getStaticProps({ params }) {
+  // params contains the post `id`.
+  // If the route is like /posts/1, then params.id is 1
+  const res = await fetch(`https://.../posts/${params.id}`)
+  const post = await res.json()
+
+  // Pass post data to the page via props
+  return { props: { post } }
+}
+
+export default Post
+```
+Để học thêm về `getStaticPaths`, ghé [Data Fetching documentation](https://nextjs.org/docs/basic-features/data-fetching#getstaticpaths-static-generation).
+
+**Khi nào thì nên dùng Static Generation?**
+Tôi khuyến nghị bạn sử dụn Static Generation (kể cả với data hay không) bất cứ khi nào có thể bởi vì trang của bạn có thể được build 1 lần và dùng được CDN, điều này nhanh hơn là server phải render page trong mỗi request.
+
+Ta có thể dùng Static Generation với rất nhiều loại trang khác nhau như:
+- Marketing pages
+- Bài blog và portfolios
+- Danh sách sản phẩm thương mại
+- Tài liệu và trợ giúp
+
+Có thể hỏi bản thân: "Liệu ta có thể pre-render" trang này trước request của người dùng. Nếu câu trả lời là có, hãy chọn Static Generation.
+Nói cách khác Static Generation không tốt nếu ta không thể pre-render 1 trang trước request của người dùng. Có thể trang của bạn hiển thị dữ liệu thường xuyên được cập nhật, và nội dung trang thay đổi trên mỗi request.
