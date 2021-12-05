@@ -167,3 +167,43 @@ Ta có thể dùng Static Generation với rất nhiều loại trang khác nhau
 
 Có thể hỏi bản thân: "Liệu ta có thể pre-render" trang này trước request của người dùng. Nếu câu trả lời là có, hãy chọn Static Generation.
 Nói cách khác Static Generation không tốt nếu ta không thể pre-render 1 trang trước request của người dùng. Có thể trang của bạn hiển thị dữ liệu thường xuyên được cập nhật, và nội dung trang thay đổi trên mỗi request.
+
+Trong trường hợp này, bạn có thể làm một trong số các điều sau:
+
+- Dùng Static Generation với Client-side Rendering: Bạn có thể bỏ qua pre-rendering 1 số phần của trang và sau đó dùng JavaScript client-side render chúng. Để biết thêm chi tiết, tham khảo [Data Fetching documentation](https://nextjs.org/docs/basic-features/data-fetching#fetching-data-on-the-client-side).
+- Dùng Server-side Rendering: Next.js pre-render một trang trên mỗi request. Nó sẽ chậm hơn 1 chút vì trang không để được cached mởi CDN, nhưng pre-render trang sẽ luôn được cập nhật. Ta sẽ nói về cách tiếp cận này phía dưới.
+
+**Server-side Rendering**
+
+`Cũng có thể gọi là "SSR" hay "Dynamic Rendering - Render động"`
+
+Nếu 1 trang sử dụng Server-side Rendering, trang HTML được sinh ra trên mỗi request.
+
+Để sử dụng Server-side Rendering cho mỗi page, ta sẽ cần `export` một hàm `async` gọi là `getServerSideProps`. Hàm này sẽ được gọi bởi server trên mỗi request.
+
+Ví dụ, giả sử rằng trang của bạn thường xuyên cần pre-render cập nhật dữ liệu (lấy dữ liệu từ api ngoài). Ta có thể viết `getServerSideProps` để lấy dữ liệu và đưa chúng vào trang (Page) như dưới đây: 
+
+```jsx
+function Page({ data }) {
+  // Render data...
+}
+
+// This gets called on every request
+export async function getServerSideProps() {
+  // Fetch data from external API
+  const res = await fetch(`https://.../data`)
+  const data = await res.json()
+
+  // Pass data to the page via props
+  return { props: { data } }
+}
+
+export default Page
+```
+
+Như ta thấy ở trên, `getServerSideProps` đã được sử dụng, tham khảo [Data Fetching documentation](https://nextjs.org/docs/basic-features/data-fetching#getserversideprops-server-side-rendering).
+
+**Tổng kết**
+
+- Static Generation (khuyến nghị): HTML được sinh ra trong lúc build time và sẽ được tái sử dụng trên mỗi request. Để tạo 1 trang dùng Static Generation, có thể export thành phần của trang (component page) hoặc export `getStaticProps` (và `getStaticPaths` nếu cần thiết). Nó rất tốt cho trang vì có thể pre-render trước mỗi request của người dùng. Ta cũng có dùng nó với Client-side Rendering để lấy thêm dữ liệu
+- Server-side Rendering: HTML được sinh ra trên mỗi request. Để làm sử dụng Server-side Rendering, export `getServerSideProps`. Bởi vì Server-side Rendering khiến hiệu năng thấp hơn Static Generation, chỉ dùng khi thật cần thiết
