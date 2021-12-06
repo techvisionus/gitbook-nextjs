@@ -53,3 +53,72 @@ export async function getStaticProps(context) {
 
 **Note**: Với `notFound: true` thì page sẽ trả về 404 dù trước đó nó có được generated thành công đi nữa. Điều này có ý nghĩa hỗ trợ các trường hợp như là người dùng generated nội dung bị gỡ bỏ bởi tác giả
 
+ - `redirect` - Một giá trị chuyển hướng tùy chọn cho phép chuyển hướng tới các nguồn ở trong và ngoài. Nó phải phù hợp với `{ destination: string, permanent: boolean }`. Trong vài trường hợp hiếm gặp, ta cần gán 1 code trạng thái tùy chỉnh với các http clients để chuyển hướng đúng đắn. Những trường hợp như vậy, bạn có thể sử dụng đặc tính `statusCode` thay thế đặc tính `permanent`, nhưng không phải cùng lúc. Dưới đây là code ví dụ về cách hoạt động:
+ 
+```js
+export async function getStaticProps(context) {
+  const res = await fetch(`https://...`)
+  const data = await res.json()
+
+  if (!data) {
+    return {
+      redirect: {
+        destination: '/',
+        permanent: false,
+      },
+    }
+  }
+
+  return {
+    props: { data }, // will be passed to the page component as props
+  }
+}
+```
+
+**Note** Chuyển hướng lúc built time hiện đang không được cho phép và nếu chuyển hướng tới đường link đã biết thì chúng nên được thêm vào `next.config.js`
+
+**Note** Bạn có thể import modules ở scope tầng trên trong `getStaticProps`. Imports sử dụng trong `getStaticProps` sẽ [không được gói cho client side](https://nextjs.org/docs/basic-features/data-fetching#write-server-side-code-directly).
+
+**Note** Bạn không nên sử dụng `fetch()` để gọi API route trong `getStaticProps`. Thay vào đó hãy nhập trực tiếp logic sử dụng trong API route. Cũng có thể cần phải cấu trúc lại code 1 chút cho cách này.
+
+### Ví dụ
+Dưới đây là một ví dụ sử dụng `getStaticProps` để lấy danh sách các bài posts blog từ một CMS (Content management system). Hãy xem ví dụ dưới đây
+```jsx
+// posts will be populated at build time by getStaticProps()
+function Blog({ posts }) {
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li>{post.title}</li>
+      ))}
+    </ul>
+  )
+}
+
+// This function gets called at build time on server-side.
+// It won't be called on client-side, so you can even do
+// direct database queries. See the "Technical details" section.
+export async function getStaticProps() {
+  // Call an external API endpoint to get posts.
+  // You can use any data fetching library
+  const res = await fetch('https://.../posts')
+  const posts = await res.json()
+
+  // By returning { props: { posts } }, the Blog component
+  // will receive `posts` as a prop at build time
+  return {
+    props: {
+      posts,
+    },
+  }
+}
+
+export default Blog
+```
+Khi nào thì ta nên sử dụng `getStaticProps`??
+Nên dùng `getStaticProps` nếu:
+- Data yêu cầu render page có sẵn lúc build time trước mỗi request của user.
+- Data đến từ một headless CMS
+- Data có thể được cached
+- Trang (page) phải được pre-rendered (để SEO tốt) và phải nhanh - `getStaticProps` sinh HTML và JSON files, cả 2 có thể được cached bởi CDN để gia tăng hiệu suất.
+
