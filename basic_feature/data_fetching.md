@@ -122,3 +122,191 @@ Nên dùng `getStaticProps` nếu:
 - Data có thể được cached
 - Trang (page) phải được pre-rendered (để SEO tốt) và phải nhanh - `getStaticProps` sinh HTML và JSON files, cả 2 có thể được cached bởi CDN để gia tăng hiệu suất.
 
+TypeScript: dùng `getStaticProps`
+
+Với TypeScript, bạn có thể dùng `GetStaticProps` từ `next`:
+```ts
+import { GetStaticProps } from 'next'
+
+export const getStaticProps: GetStaticProps = async (context) => {
+  // ...
+}
+```
+Nếu bạn muốn tham khảo từ props, bạn có thể dùng `InferGetStaticPropsType<typeof getStaticProps>` như sau:
+```tsx
+import { InferGetStaticPropsType } from 'next'
+
+type Post = {
+  author: string
+  content: string
+}
+
+export const getStaticProps = async () => {
+  const res = await fetch('https://.../posts')
+  const posts: Post[] = await res.json()
+
+  return {
+    props: {
+      posts,
+    },
+  }
+}
+
+function Blog({ posts }: InferGetStaticPropsType<typeof getStaticProps>) {
+  // will resolve posts to type Post[]
+}
+
+export default Blog
+```
+
+Note: Next.js có thời gian timeout mặc định của static generation là 60 giây. Nếu có page mới không hoàn thành generate trong thời gian timeout, nó sẽ generate thêm 3 lần nữa. Nếu lần 4 không thành, quá trình build thất bại. Thời gian timeout này có thể thay đổi bằng cách cấu hình như sau:
+```js
+// next.config.js
+module.exports = {
+  // time in seconds of no pages generating during static
+  // generation before timing out
+  staticPageGenerationTimeout: 90,
+}
+```
+### [Incremental Static Regeneration](https://nextjs.org/docs/basic-features/data-fetching#incremental-static-regeneration)
+
+Next.js cho phép bạn tạo hoặc cập nhật static page sau khi build trang web, Incremental Static Regeneration (ISR) cho phép bạn dùng static-generation trên mỗi page cơ bản, **mà không cần build lại cả trang web**. Với ISR, bạn có thể giữ lại nhiều lợi ích của static page khi scale lên hàng triệu page.
+
+Xem xét ví dụ về `getStaticProps` trước đó, nhưng giờ Incremental Static Regeneration cho phép thông qua đặc tính `revalidate`:
+
+```jsx
+function Blog({ posts }) {
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li>{post.title}</li>
+      ))}
+    </ul>
+  )
+}
+
+// This function gets called at build time on server-side.
+// It may be called again, on a serverless function, if
+// revalidation is enabled and a new request comes in
+export async function getStaticProps() {
+  const res = await fetch('https://.../posts')
+  const posts = await res.json()
+
+  return {
+    props: {
+      posts,
+    },
+    // Next.js will attempt to re-generate the page:
+    // - When a request comes in
+    // - At most once every 10 seconds
+    revalidate: 10, // In seconds
+  }
+}
+
+// This function gets called at build time on server-side.
+// It may be called again, on a serverless function, if
+// the path has not been generated.
+export async function getStaticPaths() {
+  const res = await fetch('https://.../posts')
+  const posts = await res.json()
+
+  // Get the paths we want to pre-render based on posts
+  const paths = posts.map((post) => ({
+    params: { id: post.id },
+  }))
+
+  // We'll pre-render only these paths at build time.
+  // { fallback: blocking } will server-render pages
+  // on-demand if the path doesn't exist.
+  return { paths, fallback: 'blocking' }
+}
+
+export default Blog
+```
+
+Khi một request đươc làm cho 1 page được pre-rendered lúc build time, nó sẽ khởi tạo cached page.
+
+- Mỗi request tới page sau request khởi tạo và trước 10s đều được cached và tức thời.
+- Sau 10s, request tiếp theo sẽ vẫn show được cached page
+- Next.js trigger một regeneration của page trong background.
+- Mỗi page được generate thành công, Next.js sẽ vô hiệu hóa cache và hiển thị page được cập nhật. Nếu background regeneration thất bại, page cũ sẽ không thay đổi. 
+
+Khi một request được tạo ra từ đường dẫn không được generated, Next.js sẽ server-side page trong request đầu tiên. Request tương lai sẽ phục vụ static file từ cache.
+
+Để biết hêm về cache globally và xử lý rollback, tham khảo [Incremental Static Regeneration](https://vercel.com/docs/next.js/incremental-static-regeneration).
+
+Đọc file: sử dụng `process.cwd()`
+
+File có thể được đọc trực tiếp từ filesystem trong `getStaticProps`.
+
+Để làm điều này chúng ta sẽ phải có đường dẫn đầy đủ tới file.
+
+Từ khi Next.js biên dịch code thành các danh mục riêng biệt bạn có thể sử dụng `__dirname` như là đường dẫn nó sẽ trả về khác với danh mục các page.
+
+Thay vì bạn sử dụng `process.cwd()` cho bạn danh mục nơi mà Next.js được thực thi.
+
+```jsx
+import { promises as fs } from 'fs'
+import path from 'path'
+
+// posts will be populated at build time by getStaticProps()
+function Blog({ posts }) {
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li>
+          <h3>{post.filename}</h3>
+          <p>{post.content}</p>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// This function gets called at build time on server-side.
+// It won't be called on client-side, so you can even do
+// direct database queries. See the "Technical details" section.
+export async function getStaticProps() {
+  const postsDirectory = path.join(process.cwd(), 'posts')
+  const filenames = await fs.readdir(postsDirectory)
+
+  const posts = filenames.map(async (filename) => {
+    const filePath = path.join(postsDirectory, filename)
+    const fileContents = await fs.readFile(filePath, 'utf8')
+
+    // Generally you would parse/transform the contents
+    // For example you can transform markdown to HTML here
+
+    return {
+      filename,
+      content: fileContents,
+    }
+  })
+  // By returning { props: { posts } }, the Blog component
+  // will receive `posts` as a prop at build time
+  return {
+    props: {
+      posts: await Promise.all(posts),
+    },
+  }
+}
+
+export default Blog
+```
+**Chi tiết kĩ thuật**
+
+**Chỉ chạy lúc build time**
+
+Bởi vì `getStaticProps` chạy lúc build time, nó không nhận dữ liệu mà chỉ có sẵn trong suốt thời gian request, chẳng hạn như tham số truy vấn hoặc HTTP header vì nó sinh trang HTML tĩnh.
+
+**Viết code server-side trực tiếp**
+
+Chú ý rằng `getStaticProps` chạy chỉ trên server-side. Nó sẽ không bao giờ được chạy trên client-side. Nó sẽ không như vậy dù JS bundle trên browser. Điều này có nghĩa bạn có thể viết code như là query database trực tiếp mà không gửi chúng tới browser. Bạn không nên lấy một API route từ `getStaticProps` - thay vào đó, bạn có thể viết code server-side trong `getStaticProps`.
+
+Bạn có thể sử dụng công cụ này để kiểm chứng Next.js loại bỏ những gì khỏi client-side bundle.
+
+**Static Generated cả HTML và JSON**
+
+Khi một page với `getStaticProps` được pre-rendered lúc build time, thêm vào trang HTML, Next.js sinh một JSON file giữ kết quả của việc chạy `getStaticProps`.
+
+File JSON này sẽ được sử dụng trong client-side routing thông qua `next/link` ([documentation](https://nextjs.org/docs/api-reference/next/link)) hoặc `next/router` ([documentation](https://nextjs.org/docs/api-reference/next/router)). Khi bạn điều hướng tới page được pre-rendered sử dụng  `getStaticProps`, Next.js lấy JSON file (pre-computed lúc build time) và dùng nó như props cho page component. Có nghĩa là page client-side chuyển tiếp sẽ không gọi `getStaticProps` vì chỉ JSON đã xuất được sử dụng.
