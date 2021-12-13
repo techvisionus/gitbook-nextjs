@@ -310,3 +310,110 @@ Bạn có thể sử dụng công cụ này để kiểm chứng Next.js loại 
 Khi một page với `getStaticProps` được pre-rendered lúc build time, thêm vào trang HTML, Next.js sinh một JSON file giữ kết quả của việc chạy `getStaticProps`.
 
 File JSON này sẽ được sử dụng trong client-side routing thông qua `next/link` ([documentation](https://nextjs.org/docs/api-reference/next/link)) hoặc `next/router` ([documentation](https://nextjs.org/docs/api-reference/next/router)). Khi bạn điều hướng tới page được pre-rendered sử dụng  `getStaticProps`, Next.js lấy JSON file (pre-computed lúc build time) và dùng nó như props cho page component. Có nghĩa là page client-side chuyển tiếp sẽ không gọi `getStaticProps` vì chỉ JSON đã xuất được sử dụng.
+
+
+Khi sử dụng Incremental Static Generation `getStaticProps` sẽ được thực thi bên ngoài để generate JSON phục vụ client-side navigation. Bạn có thể thấy điều này trong form của nhiều request được tạo ra trong cùng page, tuy nhiên điều này có chủ đích và không ảnh hướng tới người dùng cuối.
+
+**Duy nhất trên page**
+
+`getStaticProps` có thể chỉ xuất từ 1 page. Bạn không thể xuất nó từ non-page files.
+
+Một trong những lý do của giới hạn này là React cần phải có rất cả yêu cầu dữ liệu trước khi page được rendered.
+
+Ban phải dùng `export async function getStaticProps() {}` - nó sẽ không hoạt động nếu bạn thêm `getStaticProps` như là thuộc tính của page component.
+
+**Chạy trên mỗi request khi phát triển (development)** 
+
+Trong phát triển (`next dev`), `getStaticProps` sẽ được gọi trên mỗi request.
+
+**Preview mode**
+
+Trong một số trường hợp, bạn có thể muốn bypass tạm thời Static Generation và render page lúc request time thay vì build time. Ví dụ, bạn có thể sử dụng 1 headless CMS và muốn preview bản draft trước khi chúng được published.
+
+Use case này được hỗ trợ bởi Next.js bằng tính năng **Preview Mode**. Đọc thêm tại [Preview Mode documentation](https://nextjs.org/docs/advanced-features/preview-mode).
+
+## `GetStaticPaths` (Static Generation)
+
+Nếu 1 page có đường dẫn động (dynamic routes) và dùng `getStaticProps` thì cần định nghĩa 1 list  các đường dẫn (paths) phải có để rendered HTML lúc build time.
+
+Nếu bạn export 1 gọi hàm `async` là `getStaticPaths` từ 1 page để sử dụng dynamic routes, Next.js sẽ pre-render tất cả đường dẫn bằng `getStaticPaths`.
+```jsx
+export async function getStaticPaths() {
+  return {
+    paths: [
+      { params: { ... } } // See the "paths" section below
+    ],
+    fallback: true, false, or 'blocking' // See the "fallback" section below
+  };
+}
+```
+**The `paths` key (required)**
+Key `path` quyết định đường dẫn (path) nào sẽ được pre-rendered. Ví dụ, giả định rằng bạn có 1 page sử dụng dynamic routes tên `pages/posts/[id].js` . Nếu bạn export `getStaticPaths` từ page này và trả về `paths` như sau:
+```js
+return {
+  paths: [
+    { params: { id: '1' } },
+    { params: { id: '2' } }
+  ],
+  fallback: ...
+}
+```
+Sau đó Next.js sẽ generate tĩnh `posts/1` và `posts/2` lúc build time sử dụng page component trong `pages/posts/[id]/js`.
+
+Chú ý rằng value của mỗi `params` phải phù hợp với các tham số được dùng trong tên page:
+
+- Nếu tên page là `pages/posts/[postId]/[commentId]`, thì `params` nên chứa `postId` và `commentId`.
+- Nếu tên page dùng catch-all route, ví dụ `pages/[...slug]`, thì `params` nên chứa `slug` có mảng (array). Ví dụ nếu mảng này là `['foo', 'bar']`.
+- Nếu page sử dụng 1 catch-all route tùy chọn, cung cấp `null`, `[]`, `undefined` hoặc `false` để render đường dẫn root-most. Ví dụ, nếu bạn cung cấp `slug: false` cho `pages/[[...slug]]`, Next.js sẽ generate tĩnh trang `/`.
+
+Khóa `fallback` (required)
+
+Đối tượng trả về bởi `getStaticPaths` phải chứa khóa `fallback`
+
+`fallback: false`
+
+Nếu `fallback` là `false` thì mọi path không trả về bởi `getStaticPaths` sẽ dẫn về trang 404. Bạn có thể làm điều này nếu bạn có 1 số lượng nhỏ đường dẫn để pre-render - vì vậy tất cả chúng được generate tĩnh lúc build time. Nó cũng có ích khi page mới không được thêm thường xuyên. Nếu bạn thêm vài item vào data source và cần render page mới, bạn có thể chạy lại.
+
+Dưới đây là 1 ví dụ về pre-render 1 bài blog gọi `pages/posts/[id].js`. Danh sách bài blog sẽ được lấy từ 1 CMS và trả về bởi `getStaticPaths`. Sau đó với mỗi page, nó lấy dữ liệu bài post từ 1 CMS sử dụng `getStaticProps`. Xem thêm tại [Pages documentation](https://nextjs.org/docs/basic-features/pages).
+
+```jsx
+// pages/posts/[id].js
+
+function Post({ post }) {
+  // Render post...
+}
+
+// This function gets called at build time
+export async function getStaticPaths() {
+  // Call an external API endpoint to get posts
+  const res = await fetch('https://.../posts')
+  const posts = await res.json()
+
+  // Get the paths we want to pre-render based on posts
+  const paths = posts.map((post) => ({
+    params: { id: post.id },
+  }))
+
+  // We'll pre-render only these paths at build time.
+  // { fallback: false } means other routes should 404.
+  return { paths, fallback: false }
+}
+
+// This also gets called at build time
+export async function getStaticProps({ params }) {
+  // params contains the post `id`.
+  // If the route is like /posts/1, then params.id is 1
+  const res = await fetch(`https://.../posts/${params.id}`)
+  const post = await res.json()
+
+  // Pass post data to the page via props
+  return { props: { post } }
+}
+
+export default Post
+```
+
+**`fallback: true`**
+- Nếu `fallback` là `true`, sau đó hành vi của `getStaticProps` sẽ rendered HTML lúc build time bởi `getStaticProps`.
+- Đường dẫn (paths) không được generate lúc build time sẽ không dẫn đến trang 404. Thay vào đó, Next.js sẽ cung cấp 1 phiên bản `fallback` của page trên request đầu tiên về 1 path như vậy. Chú ý: phiên bản `fallback` này sẽ không thể phục vụ cho crawler như google, bing,... và thay vào đó sẽ render 1 path trong chế độ `blocking`.
+- Trong nền, Next.js sẽ generate tĩnh 1 request path HTML và JSON. Điều này bao gồm cả chạy `getStaticProps`
